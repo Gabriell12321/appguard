@@ -65,6 +65,23 @@ class WhatsAppAccessibilityService : AccessibilityService() {
             "novas conversas individuais desaparecerão",
             "new individual chats will disappear"
         )
+        // Tela de Privacidade Avançada (per-conversation)
+        private val ADVANCED_PRIVACY_SCREEN_INDICATORS = listOf(
+            "Privacidade avançada", "Advanced privacy",
+            "Privacidade avancada"
+        )
+        // Togles de privacidade avançada que devem ficar LIGADOS
+        private val ADVANCED_PRIVACY_TOGGLE_TEXTS = listOf(
+            // Restringir exportação
+            "Restringir exportação de conversa", "Restrict exporting chat",
+            "Restringir exportação", "Restrict export",
+            // Bloquear download de mídia
+            "Bloquear download de mídia", "Block downloading media",
+            "Bloquear downloads", "Block downloads",
+            // Bloquear uso de IA
+            "Bloquear mensagens de IA", "Block AI messages",
+            "Bloquear IA", "Block AI"
+        )
 
         var isServiceRunning = false
             private set
@@ -73,11 +90,13 @@ class WhatsAppAccessibilityService : AccessibilityService() {
     private lateinit var prefs: SharedPreferences
     private val handler = Handler(Looper.getMainLooper())
 
-    // Cooldowns separados para chamadas e mensagens
+    // Cooldowns separados para chamadas, mensagens e privacidade avançada
     private var lastCallActionTime = 0L
     private var lastMsgActionTime = 0L
+    private var lastAdvPrivacyActionTime = 0L
     private val CALL_COOLDOWN = 2000L
     private val MSG_COOLDOWN = 1500L
+    private val ADV_PRIVACY_COOLDOWN = 2000L
 
     // Retry: quando detecta "Desativada", tenta múltiplas vezes
     private var retryCount = 0
@@ -132,6 +151,13 @@ class WhatsAppAccessibilityService : AccessibilityService() {
                 ) {
                     handleDisappearingMessages(rootNode)
                     handleDefaultTimerScreen(rootNode)
+                }
+
+                // Verificar privacidade avançada
+                if (prefs.getBoolean("protect_advanced_privacy", true) &&
+                    now - lastAdvPrivacyActionTime >= ADV_PRIVACY_COOLDOWN
+                ) {
+                    handleAdvancedPrivacy(rootNode)
                 }
 
                 rootNode.recycle()
@@ -261,6 +287,127 @@ class WhatsAppAccessibilityService : AccessibilityService() {
                 retryCount = 0
             }
         }
+    }
+
+    // =========================================================================
+    // PRIVACIDADE AVANÇADA — POR CONVERSA
+    // Detecta a tela "Privacidade avançada" e liga os toggles desligados
+    // =========================================================================
+
+    private fun handleAdvancedPrivacy(rootNode: AccessibilityNodeInfo) {
+        val isAdvancedPrivacyScreen = ADVANCED_PRIVACY_SCREEN_INDICATORS.any { indicator ->
+            findNodesByText(rootNode, indicator).isNotEmpty()
+        }
+
+        if (!isAdvancedPrivacyScreen) return
+
+        Log.i(TAG, "Tela de Privacidade Avançada detectada!")
+
+        var activated = false
+
+        // Procurar switches/toggles que estão desligados
+        val allSwitches = collectNodesRecursive(rootNode) { node ->
+            val className = node.className?.toString() ?: ""
+            className.contains("Switch") || className.contains("ToggleButton") || className.contains("CompoundButton")
+        }
+
+        for (switchNode in allSwitches) {
+            if (!switchNode.isChecked) {
+                // Verificar se esse switch pertence a uma das opções de privacidade
+                val isPrivacyToggle = isRelatedToAdvancedPrivacy(switchNode, rootNode)
+                if (isPrivacyToggle) {
+                    if (clickNode(switchNode)) {
+                        Log.i(TAG, "Toggle de privacidade avançada ATIVADO: ${switchNode.text ?: switchNode.contentDescription ?: "switch"}")
+                        activated = true
+                    }
+                }
+            }
+        }
+
+        // Fallback: procurar por texto das opções e clicar nos containers
+        if (!activated) {
+            for (toggleText in ADVANCED_PRIVACY_TOGGLE_TEXTS) {
+                val nodes = findNodesByText(rootNode, toggleText)
+                for (node in nodes) {
+                    // Verificar se há um switch irmão/filho desligado
+                    val parent = node.parent ?: continue
+                    val switchInParent = findSwitchInContainer(parent)
+                    if (switchInParent != null && !switchInParent.isChecked) {
+                        if (clickNode(switchInParent)) {
+                            Log.i(TAG, "Toggle de privacidade avançada ATIVADO via texto: $toggleText")
+                            activated = true
+                        }
+                    }
+                    // Tentar clicar no container inteiro (o WhatsApp alterna o switch)
+                    if (!activated) {
+                        val clickTarget = findClickableParent(parent) ?: parent
+                        if (clickTarget.isClickable) {
+                            clickTarget.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                            Log.i(TAG, "Toggle de privacidade avançada ATIVADO via container: $toggleText")
+                            activated = true
+                        }
+                    }
+                    parent.recycle()
+                }
+            }
+        }
+
+        if (activated) {
+            lastAdvPrivacyActionTime = System.currentTimeMillis()
+        }
+    }
+
+    private fun isRelatedToAdvancedPrivacy(switchNode: AccessibilityNodeInfo, rootNode: AccessibilityNodeInfo): Boolean {
+        // Verificar se o switch tem contentDescription relacionada
+        val desc = switchNode.contentDescription?.toString() ?: ""
+        if (ADVANCED_PRIVACY_TOGGLE_TEXTS.any { desc.contains(it, ignoreCase = true) }) return true
+
+        // Verificar texto do próprio switch
+        val txt = switchNode.text?.toString() ?: ""
+        if (ADVANCED_PRIVACY_TOGGLE_TEXTS.any { txt.contains(it, ignoreCase = true) }) return true
+
+        // Verificar se o pai/container tem texto relacionado
+        var parent = switchNode.parent
+        var depth = 0
+        while (parent != null && depth < 3) {
+            for (i in 0 until parent.childCount) {
+                val sibling = parent.getChild(i) ?: continue
+                val siblingText = sibling.text?.toString() ?: ""
+                if (ADVANCED_PRIVACY_TOGGLE_TEXTS.any { siblingText.contains(it, ignoreCase = true) }) {
+                    sibling.recycle()
+                    parent.recycle()
+                    return true
+                }
+                sibling.recycle()
+            }
+            val grandParent = parent.parent
+            parent.recycle()
+            parent = grandParent
+            depth++
+        }
+
+        // Se estamos na tela de privacidade avançada, qualquer switch desligado provavelmente é relevante
+        return true
+    }
+
+    private fun findSwitchInContainer(container: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        return searchNodeRecursive(container) { node ->
+            val className = node.className?.toString() ?: ""
+            className.contains("Switch") || className.contains("ToggleButton") || className.contains("CompoundButton")
+        }
+    }
+
+    private fun findClickableParent(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        var current = node.parent
+        var depth = 0
+        while (current != null && depth < 4) {
+            if (current.isClickable) return current
+            val parent = current.parent
+            current.recycle()
+            current = parent
+            depth++
+        }
+        return null
     }
 
     // =========================================================================

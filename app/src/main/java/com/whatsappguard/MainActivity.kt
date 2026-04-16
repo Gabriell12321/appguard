@@ -90,6 +90,18 @@ class MainActivity : AppCompatActivity() {
             ).show()
         }
 
+        // Switch - Privacidade Avançada
+        binding.switchAdvancedPrivacy.isChecked = prefs.getBoolean("protect_advanced_privacy", true)
+        binding.switchAdvancedPrivacy.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("protect_advanced_privacy", isChecked).apply()
+            Toast.makeText(
+                this,
+                if (isChecked) "Privacidade avançada ATIVADA"
+                else "Privacidade avançada DESATIVADA",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+
         // Botão - Ativar Serviço de Acessibilidade
         binding.btnAccessibility.setOnClickListener {
             openAccessibilitySettings()
