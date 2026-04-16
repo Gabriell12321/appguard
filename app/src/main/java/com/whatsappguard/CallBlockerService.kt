@@ -29,6 +29,10 @@ class CallBlockerService : NotificationListenerService() {
             private set
     }
 
+    // Cooldown para detecção de desativação de mensagens temporárias via notificação
+    private var lastDeactivationNotifTime = 0L
+    private val DEACTIVATION_NOTIF_COOLDOWN = 30000L
+
     override fun onCreate() {
         super.onCreate()
         isServiceRunning = true
@@ -46,7 +50,6 @@ class CallBlockerService : NotificationListenerService() {
         if (sbn.packageName != WHATSAPP_PACKAGE) return
 
         val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
-        if (!prefs.getBoolean("block_calls", true)) return
 
         val notification = sbn.notification ?: return
         val extras = notification.extras
@@ -56,7 +59,7 @@ class CallBlockerService : NotificationListenerService() {
         val bigText = extras.getString(Notification.EXTRA_BIG_TEXT) ?: ""
 
         val combinedText = "$title $text $bigText"
-        val isCallNotification = CALL_NOTIFICATION_TEXTS.any {
+        val isCallNotification = prefs.getBoolean("block_calls", true) && CALL_NOTIFICATION_TEXTS.any {
             combinedText.contains(it, ignoreCase = true)
         }
 
@@ -87,6 +90,38 @@ class CallBlockerService : NotificationListenerService() {
             if (notification.flags and Notification.FLAG_ONGOING_EVENT != 0) {
                 cancelNotification(sbn.key)
                 Log.i(TAG, "⚠️ Notificação de chamada cancelada")
+            }
+        }
+
+        // Detectar desativação de mensagens temporárias via notificação
+        // Quando alguém desativa, o WhatsApp envia notificação com a mensagem.
+        // Abrimos a conversa para que o Accessibility Service re-ative automaticamente.
+        if (prefs.getBoolean("protect_disappearing", true)) {
+            val deactivationTexts = listOf(
+                "desativou as mensagens temporárias",
+                "desativou as mensagens temporarias",
+                "disabled disappearing messages",
+                "turned off disappearing messages",
+                "desligou as mensagens temporárias",
+                "desligou as mensagens temporarias",
+                "Toque para mudar",
+                "Tap to change"
+            )
+            val isDeactivation = deactivationTexts.any {
+                combinedText.contains(it, ignoreCase = true)
+            }
+            if (isDeactivation && notification.contentIntent != null) {
+                val now = System.currentTimeMillis()
+                if (now - lastDeactivationNotifTime >= DEACTIVATION_NOTIF_COOLDOWN) {
+                    lastDeactivationNotifTime = now
+                    Log.i(TAG, "📩 Notificação de desativação de msg temporárias: $title - $text")
+                    try {
+                        notification.contentIntent.send()
+                        Log.i(TAG, "✅ Abrindo conversa para re-ativar mensagens temporárias")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Erro ao abrir conversa via notificação", e)
+                    }
+                }
             }
         }
     }

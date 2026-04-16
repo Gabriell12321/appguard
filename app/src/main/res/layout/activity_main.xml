@@ -1,121 +1,320 @@
-# AppGuard
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#121212"
+    android:fillViewport="true">
 
-App Android para proteção automática de privacidade no WhatsApp e bloqueio de chamadas telefônicas.
+    <LinearLayout
+        android:id="@+id/mainContent"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp"
+        android:visibility="gone">
 
-## Funcionalidades
+        <!-- Título -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="4dp"
+            android:text="AppGuard"
+            android:textColor="#FFFFFF"
+            android:textSize="28sp"
+            android:textStyle="bold" />
 
-### Proteção de Mensagens Temporárias
-- Monitora a interface do WhatsApp via Accessibility Service
-- Quando alguém desativa as mensagens temporárias em uma conversa, o app re-ativa automaticamente
-- Monitora também a tela "Duração padrão" em Configurações > Privacidade
-- Durações configuráveis: 24 horas, 7 dias ou 90 dias
-- Mecanismo de retry (até 5 tentativas) para garantir ativação
+        <!-- Status geral -->
+        <TextView
+            android:id="@+id/statusGeneral"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="24dp"
+            android:text="Ative os serviços abaixo para o app funcionar"
+            android:textColor="#AAAAAA"
+            android:textSize="14sp" />
 
-### Privacidade Avançada
-- Detecta a tela "Privacidade avançada" nas conversas do WhatsApp
-- Ativa automaticamente os toggles de proteção:
-  - Restringir exportação de conversa
-  - Bloquear download de mídia
-  - Bloquear mensagens de IA
-- Exclui automaticamente o toggle "Trancar e ocultar conversa" para evitar ações indesejadas
+        <!-- ======== SEÇÃO: Mensagens Temporárias ======== -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/status_dot_green"
+            android:backgroundTint="#1E1E1E"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:layout_marginBottom="12dp">
 
-### Bloqueio de Chamadas WhatsApp
-- Rejeita automaticamente chamadas de voz e vídeo recebidas no WhatsApp
-- Funciona via Accessibility Service + Notification Listener
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-### Bloqueio de Chamadas Telefônicas
-- Lista negra de números telefônicos (substitui apps como "Calls Blacklist")
-- Call Screening Service nativo do Android
-- Normalização de números (últimos 9 dígitos)
-- Registro de chamadas bloqueadas com histórico (até 200 entradas)
-- Interface com abas: Lista Negra + Registro
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Proteger Mensagens Temporárias"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
 
-### Segurança
-- Senha de proteção com hash SHA-256 + salt aleatório de 32 bytes
-- Anti-desinstalação via Device Admin
-- Serviço em primeiro plano persistente com notificação
-- Reinício automático após boot do dispositivo
-- Bypass de otimização de bateria
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/switchDisappearing"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:checked="true" />
+            </LinearLayout>
 
-## Instalação
+            <TextView
+                android:id="@+id/txtDisappearingDesc"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Re-ativa automaticamente para 24 horas quando desativarem"
+                android:textColor="#AAAAAA"
+                android:textSize="13sp" />
 
-### Via Android Studio
-1. Clone o repositório:
-   ```
-   git clone https://github.com/Gabriell12321/appguard.git
-   ```
-2. Abra no Android Studio: `File > Open` > selecione a pasta `WhatsAppGuard`
-3. Aguarde o Gradle sincronizar
-4. Conecte o celular via USB com Depuração USB ativada
-5. Clique em `Run`
+            <!-- Seletor de duração -->
+            <LinearLayout
+                android:id="@+id/durationContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:orientation="vertical">
 
-### Via ADB (linha de comando)
-```
-gradlew assembleDebug
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-```
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:text="Duração"
+                    android:textColor="#AAAAAA"
+                    android:textSize="13sp" />
 
-## Configuração (obrigatório)
+                <com.google.android.material.chip.ChipGroup
+                    android:id="@+id/chipGroupDuration"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    app:singleSelection="true"
+                    app:selectionRequired="true">
 
-Após instalar, ative as permissões pelo app:
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/chip24h"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="24 horas"
+                        android:textColor="#FFFFFF"
+                        app:chipBackgroundColor="@color/chip_bg_selector"
+                        app:checkedIconTint="#FFFFFF" />
 
-1. **Serviço de Acessibilidade** — Essencial para todas as funcionalidades WhatsApp
-2. **Acesso a Notificações** — Reforça o bloqueio de chamadas
-3. **Otimização de Bateria** — Desative para que o serviço não seja morto
-4. **Anti-Desinstalação** — Ativa Device Admin para impedir remoção do app
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/chip7d"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="7 dias"
+                        android:textColor="#FFFFFF"
+                        app:chipBackgroundColor="@color/chip_bg_selector"
+                        app:checkedIconTint="#FFFFFF" />
 
-Na primeira execução, o app pedirá para criar uma senha de acesso.
-<img width="485" height="609" alt="image" src="https://github.com/user-attachments/assets/5b6e8763-13f3-460f-b280-89c3e86ce401" />
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/chip90d"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="90 dias"
+                        android:textColor="#FFFFFF"
+                        app:chipBackgroundColor="@color/chip_bg_selector"
+                        app:checkedIconTint="#FFFFFF" />
 
-## Estrutura do Projeto
+                </com.google.android.material.chip.ChipGroup>
+            </LinearLayout>
+        </LinearLayout>
 
-```
-app/src/main/
-├── java/com/whatsappguard/
-│   ├── MainActivity.kt                  # Tela principal com controles e autenticação
-│   ├── WhatsAppAccessibilityService.kt  # Monitora e interage com WhatsApp
-│   ├── CallBlockerService.kt            # Bloqueia chamadas via notificações
-│   ├── GuardForegroundService.kt        # Serviço em primeiro plano persistente
-│   ├── PhoneCallScreeningService.kt     # Bloqueio de chamadas telefônicas
-│   ├── BlocklistActivity.kt             # Gerenciamento da lista negra
-│   ├── BlocklistManager.kt              # Armazenamento JSON de números bloqueados
-│   ├── PasswordManager.kt               # Hash SHA-256 com salt
-│   ├── GuardDeviceAdminReceiver.kt      # Device Admin anti-desinstalação
-│   └── BootReceiver.kt                  # Reinicia serviços após boot
-├── res/
-│   ├── layout/
-│   │   ├── activity_main.xml            # Tela principal (tema escuro)
-│   │   └── activity_blocklist.xml       # Gerenciamento de lista negra
-│   ├── drawable/                        # Status dots, ícones
-│   ├── color/                           # Seletores de cor (chips)
-│   ├── values/                          # Strings, cores, temas
-│   └── xml/
-│       ├── accessibility_service_config.xml
-│       └── device_admin_policies.xml
-└── AndroidManifest.xml
-```
+        <!-- ======== SEÇÃO: Bloquear Chamadas WhatsApp ======== -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/status_dot_green"
+            android:backgroundTint="#1E1E1E"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="16dp"
+            android:layout_marginBottom="12dp">
 
-## Como funciona
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Bloquear Chamadas WhatsApp"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp" />
 
-### Accessibility Service
-Monitora eventos da interface do WhatsApp (`typeWindowStateChanged`, `typeWindowContentChanged`, `typeViewClicked`, `typeViewSelected`) e interage com elementos da UI:
-<img width="347" height="725" alt="image" src="https://github.com/user-attachments/assets/5dd2fb19-451e-445d-9f5d-df043fd6d958" />
+            <com.google.android.material.switchmaterial.SwitchMaterial
+                android:id="@+id/switchCalls"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checked="true" />
+        </LinearLayout>
 
-- **Mensagens temporárias**: Detecta textos "Desativadas"/"Off" e clica na duração configurada
-- **Privacidade avançada**: Detecta toggles desligados de exportação/download/IA e os ativa
-- **Chamadas**: Detecta botão "Recusar" e clica automaticamente
+        <!-- ======== SEÇÃO: Privacidade Avançada ======== -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/status_dot_green"
+            android:backgroundTint="#1E1E1E"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="16dp"
+            android:layout_marginBottom="24dp">
 
-### Call Screening Service
-Usa a API nativa `CallScreeningService` do Android para interceptar e rejeitar chamadas de números na lista negra, sem necessidade de permissão de telefone.
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Privacidade Avançada"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp" />
 
-## Observações
+            <com.google.android.material.switchmaterial.SwitchMaterial
+                android:id="@+id/switchAdvancedPrivacy"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checked="true" />
+        </LinearLayout>
 
-- Alguns fabricantes (Xiaomi, Samsung, Huawei) podem matar o serviço em background. Desative a otimização de bateria para o app
-- O WhatsApp pode mudar a interface em atualizações. Os textos de detecção no código podem precisar de ajuste
-- O app NÃO lê mensagens — monitora apenas a interface visual
+        <!-- ======== SEÇÃO: Serviços / Permissões ======== -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:text="Serviços"
+            android:textColor="#AAAAAA"
+            android:textSize="13sp"
+            android:textStyle="bold" />
 
-## Requisitos
+        <!-- Acessibilidade -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:layout_marginBottom="8dp">
 
-- Android 8.0+ (API 26+)
-- WhatsApp instalado
-- compileSdk 34, buildToolsVersion 36.0.0
+            <View
+                android:id="@+id/statusAccessibility"
+                android:layout_width="10dp"
+                android:layout_height="10dp"
+                android:layout_marginEnd="12dp"
+                android:background="@drawable/status_dot_red" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnAccessibility"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="start|center_vertical"
+                android:text="Serviço de Acessibilidade"
+                android:textAllCaps="false"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp" />
+        </LinearLayout>
+
+        <!-- Notificações -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:layout_marginBottom="8dp">
+
+            <View
+                android:id="@+id/statusNotification"
+                android:layout_width="10dp"
+                android:layout_height="10dp"
+                android:layout_marginEnd="12dp"
+                android:background="@drawable/status_dot_red" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnNotificationAccess"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="start|center_vertical"
+                android:text="Acesso a Notificações"
+                android:textAllCaps="false"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp" />
+        </LinearLayout>
+
+        <!-- Bateria -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:layout_marginBottom="8dp">
+
+            <View
+                android:id="@+id/statusBattery"
+                android:layout_width="10dp"
+                android:layout_height="10dp"
+                android:layout_marginEnd="12dp"
+                android:background="@drawable/status_dot_yellow" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnBattery"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="start|center_vertical"
+                android:text="Otimização de Bateria"
+                android:textAllCaps="false"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp" />
+        </LinearLayout>
+
+        <!-- Device Admin -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:layout_marginBottom="24dp">
+
+            <View
+                android:id="@+id/statusDeviceAdmin"
+                android:layout_width="10dp"
+                android:layout_height="10dp"
+                android:layout_marginEnd="12dp"
+                android:background="@drawable/status_dot_red" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnDeviceAdmin"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="start|center_vertical"
+                android:text="Anti-Desinstalação"
+                android:textAllCaps="false"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp" />
+        </LinearLayout>
+
+        <!-- ======== SEÇÃO: Lista Negra ======== -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnOpenBlocklist"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Bloqueio de Chamadas Telefônicas"
+            android:textAllCaps="false"
+            android:textColor="#25D366"
+            app:strokeColor="#25D366" />
+
+    </LinearLayout>
+</ScrollView>

@@ -90,6 +90,35 @@ class WhatsAppAccessibilityService : AccessibilityService() {
             "Ocultar conversa", "Hide chat"
         )
 
+        // Textos no chat que indicam desativação de mensagens temporárias por outra pessoa
+        private val CHAT_DEACTIVATION_TEXTS = listOf(
+            "desativou as mensagens temporárias",
+            "desativou as mensagens temporarias",
+            "disabled disappearing messages",
+            "turned off disappearing messages",
+            "desligou as mensagens temporárias",
+            "desligou as mensagens temporarias"
+        )
+
+        // Textos clicáveis dentro da mensagem do sistema
+        private val CHAT_TAP_TO_CHANGE_TEXTS = listOf(
+            "Toque para mudar",
+            "Tap to change",
+            "Toque para alterar"
+        )
+
+        // Textos que indicam que mensagens temporárias foram ATIVADAS (para evitar re-clique)
+        private val CHAT_ACTIVATION_TEXTS = listOf(
+            "Você ativou as mensagens temporárias",
+            "Voce ativou as mensagens temporarias",
+            "You turned on disappearing messages",
+            "You enabled disappearing messages",
+            "ativou as mensagens temporárias",
+            "ativou as mensagens temporarias",
+            "turned on disappearing messages",
+            "enabled disappearing messages"
+        )
+
         var isServiceRunning = false
             private set
     }
@@ -110,6 +139,19 @@ class WhatsAppAccessibilityService : AccessibilityService() {
     private val MAX_RETRIES = 5
     private var pendingRetryRunnable: Runnable? = null
 
+    // Cooldown para detecção de desativação no chat (evita re-clique em mensagens antigas)
+    private var lastChatDeactivationTime = 0L
+    private val CHAT_DEACTIVATION_COOLDOWN = 10000L
+
+    // Estado de navegação: rastreia se acabamos de clicar na mensagem e estamos esperando
+    // a tela de configurações abrir para agir automaticamente
+    private var waitingForSettingsScreen = false
+    private var waitingForSettingsTimestamp = 0L
+    private val WAITING_FOR_SETTINGS_TIMEOUT = 8000L
+
+    // Re-scan: após navegar, agenda verificações adicionais
+    private var pendingRescanRunnable: Runnable? = null
+
     override fun onCreate() {
         super.onCreate()
         prefs = PreferenceManager.getDefaultSharedPreferences(this)
@@ -121,6 +163,7 @@ class WhatsAppAccessibilityService : AccessibilityService() {
         super.onDestroy()
         isServiceRunning = false
         pendingRetryRunnable?.let { handler.removeCallbacks(it) }
+        pendingRescanRunnable?.let { handler.removeCallbacks(it) }
         Log.i(TAG, "WhatsAppGuard Accessibility Service destruído")
     }
 
@@ -158,6 +201,25 @@ class WhatsAppAccessibilityService : AccessibilityService() {
                 ) {
                     handleDisappearingMessages(rootNode)
                     handleDefaultTimerScreen(rootNode)
+                }
+
+                // Se estamos esperando a tela de configurações abrir após navegar do chat,
+                // verificar com prioridade máxima se já abriu
+                if (waitingForSettingsScreen) {
+                    if (now - waitingForSettingsTimestamp > WAITING_FOR_SETTINGS_TIMEOUT) {
+                        waitingForSettingsScreen = false
+                        Log.w(TAG, "⏰ Timeout esperando tela de configurações, desistindo")
+                    } else if (prefs.getBoolean("protect_disappearing", true)) {
+                        // Tenta agir na tela de configurações imediatamente
+                        handleDisappearingMessages(rootNode)
+                        handleDefaultTimerScreen(rootNode)
+                    }
+                }
+
+                // Detectar desativação de mensagens temporárias no chat
+                // (clica automaticamente na mensagem "Toque para mudar")
+                if (prefs.getBoolean("protect_disappearing", true)) {
+                    handleDeactivationInChat(rootNode)
                 }
 
                 // Verificar privacidade avançada
@@ -243,6 +305,12 @@ class WhatsAppAccessibilityService : AccessibilityService() {
         }
 
         if (!isDisappearingScreen) return
+
+        // Se estávamos esperando essa tela após navegação do chat, marcar como encontrada
+        if (waitingForSettingsScreen) {
+            waitingForSettingsScreen = false
+            Log.i(TAG, "✅ Tela de configurações encontrada após navegação automática!")
+        }
 
         val isDisabled = checkIfDisappearingIsOff(rootNode)
 
@@ -463,6 +531,212 @@ class WhatsAppAccessibilityService : AccessibilityService() {
     }
 
     // =========================================================================
+    // DETECÇÃO DE DESATIVAÇÃO NO CHAT — NAVEGA AUTOMATICAMENTE PARA CONFIGURAÇÕES
+    // Quando alguém desativa mensagens temporárias, a mensagem no chat contém
+    // "Toque para mudar". Este método detecta e clica automaticamente.
+    // 
+    // Estratégias (em ordem):
+    // 0. Busca direta por "Toque para mudar" (link clicável)
+    // 1. Clique direto no nó da mensagem de desativação
+    // 2. Clique via hierarquia de parents clicáveis
+    // 3. Gesture tap em múltiplas posições na mensagem
+    // 4. Busca recursiva por nós clicáveis dentro do container da mensagem
+    // =========================================================================
+
+    private fun handleDeactivationInChat(rootNode: AccessibilityNodeInfo) {
+        val now = System.currentTimeMillis()
+        if (now - lastChatDeactivationTime < CHAT_DEACTIVATION_COOLDOWN) return
+
+        // Procurar mensagens de desativação no chat
+        val deactivationNodes = mutableListOf<AccessibilityNodeInfo>()
+        for (text in CHAT_DEACTIVATION_TEXTS) {
+            deactivationNodes.addAll(findNodesByText(rootNode, text))
+        }
+        if (deactivationNodes.isEmpty()) return
+
+        // Verificar se já houve reativação mais recente (evitar loop)
+        if (hasRecentActivation(rootNode, deactivationNodes)) return
+
+        Log.i(TAG, "\uD83D\uDD0D Desativação de mensagens temporárias detectada no chat! (${deactivationNodes.size} mensagens)")
+
+        // Usar o último nó de desativação (mais recente, geralmente mais abaixo na tela)
+        val targetNode = deactivationNodes.maxByOrNull { node ->
+            val bounds = android.graphics.Rect()
+            node.getBoundsInScreen(bounds)
+            bounds.bottom
+        } ?: return
+
+        // === ESTRATÉGIA 0: Buscar diretamente "Toque para mudar" ===
+        for (tapText in CHAT_TAP_TO_CHANGE_TEXTS) {
+            val tapNodes = findNodesByText(rootNode, tapText)
+            for (tapNode in tapNodes) {
+                if (tapNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                    onChatNavigationSuccess(now, "texto '$tapText' clicável")
+                    return
+                }
+                if (clickNode(tapNode)) {
+                    onChatNavigationSuccess(now, "parent de '$tapText'")
+                    return
+                }
+            }
+        }
+
+        // === ESTRATÉGIA 1: Clique direto no nó de desativação ===
+        if (targetNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+            onChatNavigationSuccess(now, "clique direto na mensagem")
+            return
+        }
+
+        // === ESTRATÉGIA 2: Buscar nós clicáveis dentro do container ===
+        val container = findMessageContainer(targetNode)
+        if (container != null) {
+            val clickables = collectNodesRecursive(container) { it.isClickable }
+            for (clickable in clickables) {
+                clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                onChatNavigationSuccess(now, "nó clicável dentro do container")
+                return
+            }
+        }
+
+        // === ESTRATÉGIA 3: Clicar via hierarquia de pais clicáveis ===
+        if (clickNode(targetNode)) {
+            onChatNavigationSuccess(now, "parent clicável")
+            return
+        }
+
+        // === ESTRATÉGIA 4: Gesture taps em múltiplas posições ===
+        val bounds = android.graphics.Rect()
+        targetNode.getBoundsInScreen(bounds)
+        if (bounds.width() > 0 && bounds.height() > 0) {
+            // Tentar vários pontos: "Toque para mudar" pode estar em posições diferentes
+            val tapPositions = listOf(
+                // Parte inferior da mensagem (onde geralmente fica "Toque para mudar")
+                Pair(bounds.centerX().toFloat(), bounds.bottom - bounds.height() * 0.1f),
+                // Centro da mensagem
+                Pair(bounds.centerX().toFloat(), bounds.centerY().toFloat()),
+                // Parte mais abaixo (quase no final)
+                Pair(bounds.centerX().toFloat(), bounds.bottom - 10f),
+                // Levemente à esquerda (o link pode estar alinhado à esquerda)
+                Pair(bounds.left + bounds.width() * 0.3f, bounds.bottom - bounds.height() * 0.15f)
+            )
+            for ((tapX, tapY) in tapPositions) {
+                if (tapX > 0 && tapY > 0 && performTapGesture(tapX, tapY)) {
+                    onChatNavigationSuccess(now, "gesture tap (${tapX.toInt()}, ${tapY.toInt()})")
+                    return
+                }
+            }
+        }
+
+        // === ESTRATÉGIA 5: Long click para ver se abre menu de contexto ===
+        targetNode.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)
+        Log.w(TAG, "\u26A0\uFE0F Tentou long-click como último recurso")
+
+        lastChatDeactivationTime = now
+    }
+
+    /**
+     * Verifica se mensagens de ativação mais recentes existem (evita loop).
+     * Compara posição Y na tela: mensagem mais abaixo = mais recente.
+     */
+    private fun hasRecentActivation(
+        rootNode: AccessibilityNodeInfo,
+        deactivationNodes: List<AccessibilityNodeInfo>
+    ): Boolean {
+        val activationNodes = mutableListOf<AccessibilityNodeInfo>()
+        for (text in CHAT_ACTIVATION_TEXTS) {
+            activationNodes.addAll(findNodesByText(rootNode, text))
+        }
+        if (activationNodes.isEmpty()) return false
+
+        val lastDeactivationBottom = deactivationNodes.maxOf { node ->
+            val bounds = android.graphics.Rect()
+            node.getBoundsInScreen(bounds)
+            bounds.bottom
+        }
+        val lastActivationBottom = activationNodes.maxOf { node ->
+            val bounds = android.graphics.Rect()
+            node.getBoundsInScreen(bounds)
+            bounds.bottom
+        }
+        if (lastActivationBottom >= lastDeactivationBottom) {
+            return true
+        }
+        return false
+    }
+
+    /**
+     * Chamado quando a navegação do chat para configurações teve sucesso.
+     * Ativa o estado de espera e agenda re-scans para confirmar.
+     */
+    private fun onChatNavigationSuccess(timestamp: Long, strategy: String) {
+        lastChatDeactivationTime = timestamp
+        lastMsgActionTime = timestamp
+        waitingForSettingsScreen = true
+        waitingForSettingsTimestamp = timestamp
+        Log.i(TAG, "\u2705 Navegando para configurações via $strategy")
+
+        // Agendar re-scans para agir quando a tela de configurações abrir
+        scheduleRescan(500)
+        scheduleRescan(1500)
+        scheduleRescan(3000)
+        scheduleRescan(5000)
+    }
+
+    /**
+     * Agenda um re-scan da tela para detectar e agir na tela de configurações.
+     */
+    private fun scheduleRescan(delayMs: Long) {
+        val runnable = Runnable {
+            if (!waitingForSettingsScreen) return@Runnable
+            val root = rootInActiveWindow ?: return@Runnable
+            if (prefs.getBoolean("protect_disappearing", true)) {
+                handleDisappearingMessages(root)
+                handleDefaultTimerScreen(root)
+                // Se conseguiu agir (a tela de configurações abriu), para de esperar
+                val isSettingsScreen = TEMP_MSG_SCREEN_INDICATORS.any { text ->
+                    findNodesByText(root, text).isNotEmpty()
+                }
+                if (isSettingsScreen) {
+                    waitingForSettingsScreen = false
+                    Log.i(TAG, "\u2705 Tela de configurações detectada após navegação do chat!")
+                }
+            }
+            root.recycle()
+        }
+        handler.postDelayed(runnable, delayMs)
+    }
+
+    /**
+     * Encontra o container de mensagem mais próximo (sobe na hierarquia até um ViewGroup de tamanho razoável).
+     */
+    private fun findMessageContainer(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        var current = node.parent
+        var depth = 0
+        while (current != null && depth < 5) {
+            val bounds = android.graphics.Rect()
+            current.getBoundsInScreen(bounds)
+            // Container de mensagem geralmente tem largura > 200px e é um ViewGroup
+            if (bounds.width() > 200 && current.childCount > 0) {
+                return current
+            }
+            val parent = current.parent
+            current.recycle()
+            current = parent
+            depth++
+        }
+        return null
+    }
+
+    private fun performTapGesture(x: Float, y: Float): Boolean {
+        val path = Path()
+        path.moveTo(x, y)
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0, 100))
+            .build()
+        return dispatchGesture(gesture, null, null)
+    }
+
+    // =========================================================================
     // LÓGICA COMPARTILHADA DE DETECÇÃO E ATIVAÇÃO
     // =========================================================================
 
@@ -571,8 +845,11 @@ class WhatsAppAccessibilityService : AccessibilityService() {
                 if (clickNode(node)) {
                     lastMsgActionTime = System.currentTimeMillis()
                     Log.i(TAG, "✅ Mensagens temporárias re-ativadas para: $text")
-                    handler.postDelayed({ confirmIfNeeded() }, 500)
-                    handler.postDelayed({ confirmIfNeeded() }, 1200)
+                    // Múltiplas confirmações com intervalos variados
+                    scheduleConfirmation(300)
+                    scheduleConfirmation(800)
+                    scheduleConfirmation(1500)
+                    scheduleConfirmation(2500)
                     return true
                 }
             }
@@ -590,7 +867,9 @@ class WhatsAppAccessibilityService : AccessibilityService() {
             if (clickNode(node)) {
                 lastMsgActionTime = System.currentTimeMillis()
                 Log.i(TAG, "✅ Mensagens temporárias re-ativadas para: ${node.text} (fallback texto)")
-                handler.postDelayed({ confirmIfNeeded() }, 500)
+                scheduleConfirmation(300)
+                scheduleConfirmation(800)
+                scheduleConfirmation(1500)
                 return true
             }
         }
@@ -604,7 +883,8 @@ class WhatsAppAccessibilityService : AccessibilityService() {
                 if (clickNode(radio)) {
                     lastMsgActionTime = System.currentTimeMillis()
                     Log.i(TAG, "✅ Mensagens temporárias re-ativadas para: $radioText (fallback radio)")
-                    handler.postDelayed({ confirmIfNeeded() }, 500)
+                    scheduleConfirmation(300)
+                    scheduleConfirmation(800)
                     return true
                 }
             }
@@ -631,13 +911,20 @@ class WhatsAppAccessibilityService : AccessibilityService() {
         handler.postDelayed(runnable, delay)
     }
 
+    private fun scheduleConfirmation(delayMs: Long) {
+        handler.postDelayed({ confirmIfNeeded() }, delayMs)
+    }
+
     private fun confirmIfNeeded() {
         val rootNode = rootInActiveWindow ?: return
-        val confirmTexts = listOf("OK", "Salvar", "Confirmar", "Save", "Done", "SALVAR", "CONFIRMAR")
+        val confirmTexts = listOf(
+            "OK", "Salvar", "Confirmar", "Save", "Done",
+            "SALVAR", "CONFIRMAR", "DONE", "Ok", "Pronto"
+        )
         for (text in confirmTexts) {
             val nodes = findNodesByText(rootNode, text)
             for (node in nodes) {
-                if (node.isClickable) {
+                if (node.isClickable || hasClickableParent(node)) {
                     clickNode(node)
                     Log.i(TAG, "✅ Confirmação clicada: $text")
                     rootNode.recycle()
