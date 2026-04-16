@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">AppGuard</string>
+    <string name="accessibility_service_description">Serviço de monitoramento do WhatsApp para proteção de mensagens temporárias e bloqueio automático de chamadas. Detecta alterações nas configurações de mensagens temporárias e as restaura automaticamente.</string>
+</resources>

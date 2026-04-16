@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#121212">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <!-- Toolbar -->
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="#1E1E1E"
+            app:title="Bloqueio de Chamadas"
+            app:titleTextColor="#FFFFFF"
+            app:navigationIcon="@drawable/ic_arrow_back" />
+
+        <!-- Toggle habilitar bloqueio -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#1E1E1E"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="12dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Habilitar bloqueio"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp" />
+
+            <com.google.android.material.switchmaterial.SwitchMaterial
+                android:id="@+id/switchBlocking"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checked="true" />
+        </LinearLayout>
+
+        <!-- Status da permissão de call screening -->
+        <LinearLayout
+            android:id="@+id/callScreeningRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#1E1E1E"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="16dp"
+            android:paddingBottom="12dp">
+
+            <TextView
+                android:id="@+id/txtCallScreeningStatus"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="⚠ Permissão necessária"
+                android:textColor="#FF8800"
+                android:textSize="13sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnCallScreening"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Ativar"
+                android:textAllCaps="false"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#333333" />
+
+        <!-- Tabs -->
+        <com.google.android.material.tabs.TabLayout
+            android:id="@+id/tabLayout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#1E1E1E"
+            app:tabIndicatorColor="#25D366"
+            app:tabSelectedTextColor="#25D366"
+            app:tabTextColor="#888888" />
+
+        <!-- Content wrapper -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <!-- === Tab LISTA NEGRA === -->
+            <LinearLayout
+                android:id="@+id/frameBlocklist"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical">
+
+                <ScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:clipToPadding="false"
+                    android:paddingBottom="80dp">
+
+                    <LinearLayout
+                        android:id="@+id/listBlockedNumbers"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="4dp" />
+                </ScrollView>
+
+                <TextView
+                    android:id="@+id/emptyBlocklist"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:text="Nenhum número bloqueado\nToque no + para adicionar"
+                    android:textColor="#666666"
+                    android:textSize="15sp"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+            <!-- === Tab REGISTRO === -->
+            <LinearLayout
+                android:id="@+id/frameLog"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <ScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:clipToPadding="false"
+                    android:paddingBottom="80dp">
+
+                    <LinearLayout
+                        android:id="@+id/listCallLog"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="4dp" />
+                </ScrollView>
+
+                <TextView
+                    android:id="@+id/emptyLog"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:text="Nenhuma chamada bloqueada ainda"
+                    android:textColor="#666666"
+                    android:textSize="15sp"
+                    android:visibility="gone" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnClearLog"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:text="Limpar registro"
+                    android:textAllCaps="false"
+                    android:textColor="#FF4444"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+        </FrameLayout>
+
+    </LinearLayout>
+
+    <!-- FAB para adicionar número -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fabAdd"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="24dp"
+        android:contentDescription="Adicionar número"
+        app:backgroundTint="#25D366"
+        app:srcCompat="@drawable/ic_add"
+        app:tint="#FFFFFF" />
+
+</FrameLayout>
