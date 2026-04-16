@@ -1,81 +1,119 @@
-# 🛡️ WhatsApp Guard
+# AppGuard
 
-App Android para proteção automática de privacidade no WhatsApp.
+App Android para proteção automática de privacidade no WhatsApp e bloqueio de chamadas telefônicas.
 
 ## Funcionalidades
 
-### 🔒 Proteção de Mensagens Temporárias
-- Quando alguém entra na tela de "Mensagens temporárias" e seleciona "Desativadas", o app automaticamente re-seleciona "24 horas"
-- Funciona monitorando a interface do WhatsApp via Accessibility Service
+### Proteção de Mensagens Temporárias
+- Monitora a interface do WhatsApp via Accessibility Service
+- Quando alguém desativa as mensagens temporárias em uma conversa, o app re-ativa automaticamente
+- Monitora também a tela "Duração padrão" em Configurações > Privacidade
+- Durações configuráveis: 24 horas, 7 dias ou 90 dias
+- Mecanismo de retry (até 5 tentativas) para garantir ativação
 
-### 📵 Bloqueio de Chamadas WhatsApp
-- Rejeita automaticamente chamadas de voz e vídeo recebidas
+### Privacidade Avançada
+- Detecta a tela "Privacidade avançada" nas conversas do WhatsApp
+- Ativa automaticamente os toggles de proteção:
+  - Restringir exportação de conversa
+  - Bloquear download de mídia
+  - Bloquear mensagens de IA
+- Exclui automaticamente o toggle "Trancar e ocultar conversa" para evitar ações indesejadas
+
+### Bloqueio de Chamadas WhatsApp
+- Rejeita automaticamente chamadas de voz e vídeo recebidas no WhatsApp
 - Funciona via Accessibility Service + Notification Listener
 
-## Como Instalar e Configurar
+### Bloqueio de Chamadas Telefônicas
+- Lista negra de números telefônicos (substitui apps como "Calls Blacklist")
+- Call Screening Service nativo do Android
+- Normalização de números (últimos 9 dígitos)
+- Registro de chamadas bloqueadas com histórico (até 200 entradas)
+- Interface com abas: Lista Negra + Registro
 
-### 1. Abrir no Android Studio
-1. Abra o Android Studio
-2. `File > Open` → selecione a pasta `WhatsAppGuard`
+### Segurança
+- Senha de proteção com hash SHA-256 + salt aleatório de 32 bytes
+- Anti-desinstalação via Device Admin
+- Serviço em primeiro plano persistente com notificação
+- Reinício automático após boot do dispositivo
+- Bypass de otimização de bateria
+
+## Instalação
+
+### Via Android Studio
+1. Clone o repositório:
+   ```
+   git clone https://github.com/Gabriell12321/appguard.git
+   ```
+2. Abra no Android Studio: `File > Open` > selecione a pasta `WhatsAppGuard`
 3. Aguarde o Gradle sincronizar
+4. Conecte o celular via USB com Depuração USB ativada
+5. Clique em `Run`
 
-### 2. Instalar no celular
-1. Conecte o celular via USB com Depuração USB ativada
-2. Clique em `Run` (▶️) no Android Studio
-3. Selecione seu dispositivo
+### Via ADB (linha de comando)
+```
+gradlew assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
 
-### 3. Ativar permissões (OBRIGATÓRIO)
-Após instalar, você precisa ativar 2 permissões:
+## Configuração (obrigatório)
 
-#### Serviço de Acessibilidade (Essencial)
-1. No app, toque em "Ativar Serviço de Acessibilidade"
-2. Nas configurações do Android, encontre "WhatsApp Guard"
-3. Ative o serviço
-4. Confirme o popup de aviso
+Após instalar, ative as permissões pelo app:
 
-#### Acesso a Notificações (Para bloqueio de chamadas reforçado)
-1. No app, toque em "Ativar Acesso a Notificações"
-2. Nas configurações, ative "WhatsApp Guard"
+1. **Serviço de Acessibilidade** — Essencial para todas as funcionalidades WhatsApp
+2. **Acesso a Notificações** — Reforça o bloqueio de chamadas
+3. **Otimização de Bateria** — Desative para que o serviço não seja morto
+4. **Anti-Desinstalação** — Ativa Device Admin para impedir remoção do app
 
-### 4. Pronto!
-O app funciona em segundo plano automaticamente.
-
-## Como funciona tecnicamente
-
-### Accessibility Service
-O Android oferece o `AccessibilityService` que permite que apps de acessibilidade monitorem e interajam com a interface de outros apps. O WhatsApp Guard usa isso para:
-
-1. **Detectar a tela de mensagens temporárias** → procura por textos como "Mensagens temporárias", "Desativadas"
-2. **Clicar em "24 horas"** → quando detecta que "Desativadas" está selecionada
-3. **Detectar tela de chamada** → procura por textos como "Chamada de voz", "Chamada de vídeo"
-4. **Clicar em "Recusar"** → rejeita a chamada automaticamente
-
-### NotificationListenerService
-Complementa o Accessibility Service detectando notificações de chamada do WhatsApp e usando as ações da notificação para rejeitar.
+Na primeira execução, o app pedirá para criar uma senha de acesso.
 
 ## Estrutura do Projeto
+
 ```
 app/src/main/
 ├── java/com/whatsappguard/
-│   ├── MainActivity.kt              # Tela principal com controles
-│   ├── WhatsAppAccessibilityService.kt # Monitora e interage com WhatsApp
-│   ├── CallBlockerService.kt         # Bloqueia chamadas via notificações
-│   └── BootReceiver.kt               # Reinicia serviços após boot
+│   ├── MainActivity.kt                  # Tela principal com controles e autenticação
+│   ├── WhatsAppAccessibilityService.kt  # Monitora e interage com WhatsApp
+│   ├── CallBlockerService.kt            # Bloqueia chamadas via notificações
+│   ├── GuardForegroundService.kt        # Serviço em primeiro plano persistente
+│   ├── PhoneCallScreeningService.kt     # Bloqueio de chamadas telefônicas
+│   ├── BlocklistActivity.kt             # Gerenciamento da lista negra
+│   ├── BlocklistManager.kt              # Armazenamento JSON de números bloqueados
+│   ├── PasswordManager.kt               # Hash SHA-256 com salt
+│   ├── GuardDeviceAdminReceiver.kt      # Device Admin anti-desinstalação
+│   └── BootReceiver.kt                  # Reinicia serviços após boot
 ├── res/
-│   ├── layout/activity_main.xml      # Layout da tela principal
-│   ├── values/                       # Strings, cores, temas
-│   └── xml/accessibility_service_config.xml
+│   ├── layout/
+│   │   ├── activity_main.xml            # Tela principal (tema escuro)
+│   │   └── activity_blocklist.xml       # Gerenciamento de lista negra
+│   ├── drawable/                        # Status dots, ícones
+│   ├── color/                           # Seletores de cor (chips)
+│   ├── values/                          # Strings, cores, temas
+│   └── xml/
+│       ├── accessibility_service_config.xml
+│       └── device_admin_policies.xml
 └── AndroidManifest.xml
 ```
 
-## Observações Importantes
+## Como funciona
 
-- ⚠️ O app precisa do **Serviço de Acessibilidade** ativado para funcionar
-- ⚠️ Alguns fabricantes (Xiaomi, Samsung, Huawei) podem matar o serviço em background. Vá em Configurações > Bateria > WhatsApp Guard > "Sem restrição"
-- ⚠️ O WhatsApp pode mudar a interface em atualizações. Se parar de funcionar, os textos de detecção no código podem precisar de ajuste
-- O app NÃO lê suas mensagens — apenas monitora a interface visual do WhatsApp
+### Accessibility Service
+Monitora eventos da interface do WhatsApp (`typeWindowStateChanged`, `typeWindowContentChanged`, `typeViewClicked`, `typeViewSelected`) e interage com elementos da UI:
+
+- **Mensagens temporárias**: Detecta textos "Desativadas"/"Off" e clica na duração configurada
+- **Privacidade avançada**: Detecta toggles desligados de exportação/download/IA e os ativa
+- **Chamadas**: Detecta botão "Recusar" e clica automaticamente
+
+### Call Screening Service
+Usa a API nativa `CallScreeningService` do Android para interceptar e rejeitar chamadas de números na lista negra, sem necessidade de permissão de telefone.
+
+## Observações
+
+- Alguns fabricantes (Xiaomi, Samsung, Huawei) podem matar o serviço em background. Desative a otimização de bateria para o app
+- O WhatsApp pode mudar a interface em atualizações. Os textos de detecção no código podem precisar de ajuste
+- O app NÃO lê mensagens — monitora apenas a interface visual
 
 ## Requisitos
+
 - Android 8.0+ (API 26+)
 - WhatsApp instalado
-- Android Studio para compilar
+- compileSdk 34, buildToolsVersion 36.0.0
