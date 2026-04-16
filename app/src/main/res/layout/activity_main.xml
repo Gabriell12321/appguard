@@ -1,513 +1,121 @@
-<?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="#121212">
+# AppGuard
+
+App Android para proteção automática de privacidade no WhatsApp e bloqueio de chamadas telefônicas.
+
+## Funcionalidades
+
+### Proteção de Mensagens Temporárias
+- Monitora a interface do WhatsApp via Accessibility Service
+- Quando alguém desativa as mensagens temporárias em uma conversa, o app re-ativa automaticamente
+- Monitora também a tela "Duração padrão" em Configurações > Privacidade
+- Durações configuráveis: 24 horas, 7 dias ou 90 dias
+- Mecanismo de retry (até 5 tentativas) para garantir ativação
+
+### Privacidade Avançada
+- Detecta a tela "Privacidade avançada" nas conversas do WhatsApp
+- Ativa automaticamente os toggles de proteção:
+  - Restringir exportação de conversa
+  - Bloquear download de mídia
+  - Bloquear mensagens de IA
+- Exclui automaticamente o toggle "Trancar e ocultar conversa" para evitar ações indesejadas
+
+### Bloqueio de Chamadas WhatsApp
+- Rejeita automaticamente chamadas de voz e vídeo recebidas no WhatsApp
+- Funciona via Accessibility Service + Notification Listener
+
+### Bloqueio de Chamadas Telefônicas
+- Lista negra de números telefônicos (substitui apps como "Calls Blacklist")
+- Call Screening Service nativo do Android
+- Normalização de números (últimos 9 dígitos)
+- Registro de chamadas bloqueadas com histórico (até 200 entradas)
+- Interface com abas: Lista Negra + Registro
+
+### Segurança
+- Senha de proteção com hash SHA-256 + salt aleatório de 32 bytes
+- Anti-desinstalação via Device Admin
+- Serviço em primeiro plano persistente com notificação
+- Reinício automático após boot do dispositivo
+- Bypass de otimização de bateria
+
+## Instalação
+
+### Via Android Studio
+1. Clone o repositório:
+   ```
+   git clone https://github.com/Gabriell12321/appguard.git
+   ```
+2. Abra no Android Studio: `File > Open` > selecione a pasta `WhatsAppGuard`
+3. Aguarde o Gradle sincronizar
+4. Conecte o celular via USB com Depuração USB ativada
+5. Clique em `Run`
+
+### Via ADB (linha de comando)
+```
+gradlew assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+## Configuração (obrigatório)
+
+Após instalar, ative as permissões pelo app:
+
+1. **Serviço de Acessibilidade** — Essencial para todas as funcionalidades WhatsApp
+2. **Acesso a Notificações** — Reforça o bloqueio de chamadas
+3. **Otimização de Bateria** — Desative para que o serviço não seja morto
+4. **Anti-Desinstalação** — Ativa Device Admin para impedir remoção do app
+
+Na primeira execução, o app pedirá para criar uma senha de acesso.
+<img width="485" height="609" alt="image" src="https://github.com/user-attachments/assets/5b6e8763-13f3-460f-b280-89c3e86ce401" />
+
+## Estrutura do Projeto
+
+```
+app/src/main/
+├── java/com/whatsappguard/
+│   ├── MainActivity.kt                  # Tela principal com controles e autenticação
+│   ├── WhatsAppAccessibilityService.kt  # Monitora e interage com WhatsApp
+│   ├── CallBlockerService.kt            # Bloqueia chamadas via notificações
+│   ├── GuardForegroundService.kt        # Serviço em primeiro plano persistente
+│   ├── PhoneCallScreeningService.kt     # Bloqueio de chamadas telefônicas
+│   ├── BlocklistActivity.kt             # Gerenciamento da lista negra
+│   ├── BlocklistManager.kt              # Armazenamento JSON de números bloqueados
+│   ├── PasswordManager.kt               # Hash SHA-256 com salt
+│   ├── GuardDeviceAdminReceiver.kt      # Device Admin anti-desinstalação
+│   └── BootReceiver.kt                  # Reinicia serviços após boot
+├── res/
+│   ├── layout/
+│   │   ├── activity_main.xml            # Tela principal (tema escuro)
+│   │   └── activity_blocklist.xml       # Gerenciamento de lista negra
+│   ├── drawable/                        # Status dots, ícones
+│   ├── color/                           # Seletores de cor (chips)
+│   ├── values/                          # Strings, cores, temas
+│   └── xml/
+│       ├── accessibility_service_config.xml
+│       └── device_admin_policies.xml
+└── AndroidManifest.xml
+```
+
+## Como funciona
+
+### Accessibility Service
+Monitora eventos da interface do WhatsApp (`typeWindowStateChanged`, `typeWindowContentChanged`, `typeViewClicked`, `typeViewSelected`) e interage com elementos da UI:
+<img width="347" height="725" alt="image" src="https://github.com/user-attachments/assets/5dd2fb19-451e-445d-9f5d-df043fd6d958" />
 
-    <LinearLayout
-        android:id="@+id/mainContent"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="20dp">
+- **Mensagens temporárias**: Detecta textos "Desativadas"/"Off" e clica na duração configurada
+- **Privacidade avançada**: Detecta toggles desligados de exportação/download/IA e os ativa
+- **Chamadas**: Detecta botão "Recusar" e clica automaticamente
 
-        <!-- Header -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:layout_marginBottom="4dp"
-            android:text="AppGuard"
-            android:textColor="#FFFFFF"
-            android:textSize="26sp"
-            android:textStyle="bold"
-            android:letterSpacing="0.02" />
+### Call Screening Service
+Usa a API nativa `CallScreeningService` do Android para interceptar e rejeitar chamadas de números na lista negra, sem necessidade de permissão de telefone.
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="20dp"
-            android:text="Proteção automática de privacidade"
-            android:textColor="#999999"
-            android:textSize="13sp" />
+## Observações
 
-        <!-- Status Geral -->
-        <androidx.cardview.widget.CardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="12dp"
-            app:cardBackgroundColor="#1E1E1E"
-            app:cardCornerRadius="8dp"
-            app:cardElevation="0dp">
+- Alguns fabricantes (Xiaomi, Samsung, Huawei) podem matar o serviço em background. Desative a otimização de bateria para o app
+- O WhatsApp pode mudar a interface em atualizações. Os textos de detecção no código podem precisar de ajuste
+- O app NÃO lê mensagens — monitora apenas a interface visual
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
+## Requisitos
 
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="6dp"
-                    android:text="STATUS"
-                    android:textColor="#25D366"
-                    android:textSize="11sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.1" />
-
-                <TextView
-                    android:id="@+id/statusGeneral"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Ative os serviços abaixo"
-                    android:textColor="#FFFFFF"
-                    android:textSize="14sp" />
-
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
-
-        <!-- Card: Permissões -->
-        <androidx.cardview.widget.CardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="12dp"
-            app:cardBackgroundColor="#1E1E1E"
-            app:cardCornerRadius="8dp"
-            app:cardElevation="0dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="12dp"
-                    android:text="PERMISSÕES"
-                    android:textColor="#25D366"
-                    android:textSize="11sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.1" />
-
-                <!-- Acessibilidade -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="8dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <View
-                        android:id="@+id/statusAccessibility"
-                        android:layout_width="8dp"
-                        android:layout_height="8dp"
-                        android:layout_marginEnd="10dp"
-                        android:background="@drawable/status_dot_red" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnAccessibility"
-                        style="@style/Widget.Material3.Button.TextButton"
-                        android:layout_width="0dp"
-                        android:layout_height="40dp"
-                        android:layout_weight="1"
-                        android:text="Serviço de Acessibilidade"
-                        android:textAllCaps="false"
-                        android:textColor="#DDDDDD"
-                        android:textSize="13sp"
-                        android:gravity="start|center_vertical"
-                        android:insetTop="0dp"
-                        android:insetBottom="0dp"
-                        android:paddingStart="0dp" />
-                </LinearLayout>
-
-                <!-- Notificações -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="8dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <View
-                        android:id="@+id/statusNotification"
-                        android:layout_width="8dp"
-                        android:layout_height="8dp"
-                        android:layout_marginEnd="10dp"
-                        android:background="@drawable/status_dot_red" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnNotificationAccess"
-                        style="@style/Widget.Material3.Button.TextButton"
-                        android:layout_width="0dp"
-                        android:layout_height="40dp"
-                        android:layout_weight="1"
-                        android:text="Acesso a Notificações"
-                        android:textAllCaps="false"
-                        android:textColor="#DDDDDD"
-                        android:textSize="13sp"
-                        android:gravity="start|center_vertical"
-                        android:insetTop="0dp"
-                        android:insetBottom="0dp"
-                        android:paddingStart="0dp" />
-                </LinearLayout>
-
-                <!-- Bateria -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="8dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <View
-                        android:id="@+id/statusBattery"
-                        android:layout_width="8dp"
-                        android:layout_height="8dp"
-                        android:layout_marginEnd="10dp"
-                        android:background="@drawable/status_dot_yellow" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnBattery"
-                        style="@style/Widget.Material3.Button.TextButton"
-                        android:layout_width="0dp"
-                        android:layout_height="40dp"
-                        android:layout_weight="1"
-                        android:text="Otimização de Bateria"
-                        android:textAllCaps="false"
-                        android:textColor="#DDDDDD"
-                        android:textSize="13sp"
-                        android:gravity="start|center_vertical"
-                        android:insetTop="0dp"
-                        android:insetBottom="0dp"
-                        android:paddingStart="0dp" />
-                </LinearLayout>
-
-                <!-- Device Admin -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <View
-                        android:id="@+id/statusDeviceAdmin"
-                        android:layout_width="8dp"
-                        android:layout_height="8dp"
-                        android:layout_marginEnd="10dp"
-                        android:background="@drawable/status_dot_red" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnDeviceAdmin"
-                        style="@style/Widget.Material3.Button.TextButton"
-                        android:layout_width="0dp"
-                        android:layout_height="40dp"
-                        android:layout_weight="1"
-                        android:text="Anti-Desinstalação"
-                        android:textAllCaps="false"
-                        android:textColor="#DDDDDD"
-                        android:textSize="13sp"
-                        android:gravity="start|center_vertical"
-                        android:insetTop="0dp"
-                        android:insetBottom="0dp"
-                        android:paddingStart="0dp" />
-                </LinearLayout>
-
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
-
-        <!-- Card: Funcionalidades -->
-        <androidx.cardview.widget.CardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="12dp"
-            app:cardBackgroundColor="#1E1E1E"
-            app:cardCornerRadius="8dp"
-            app:cardElevation="0dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="12dp"
-                    android:text="FUNCIONALIDADES"
-                    android:textColor="#25D366"
-                    android:textSize="11sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.1" />
-
-                <!-- Switch Mensagens Temporárias -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="4dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
-
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="Proteger Mensagens Temporárias"
-                            android:textColor="#FFFFFF"
-                            android:textSize="14sp" />
-
-                        <TextView
-                            android:id="@+id/txtDisappearingDesc"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:text="Re-ativa automaticamente quando desativarem"
-                            android:textColor="#777777"
-                            android:textSize="12sp" />
-                    </LinearLayout>
-
-                    <com.google.android.material.switchmaterial.SwitchMaterial
-                        android:id="@+id/switchDisappearing"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:checked="true" />
-                </LinearLayout>
-
-                <!-- Seletor de Duração -->
-                <LinearLayout
-                    android:id="@+id/durationContainer"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="0dp"
-                    android:layout_marginTop="8dp"
-                    android:layout_marginBottom="16dp"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginBottom="6dp"
-                        android:text="Duração padrão"
-                        android:textColor="#999999"
-                        android:textSize="12sp" />
-
-                    <com.google.android.material.chip.ChipGroup
-                        android:id="@+id/chipGroupDuration"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        app:singleSelection="true"
-                        app:selectionRequired="true">
-
-                        <com.google.android.material.chip.Chip
-                            android:id="@+id/chip24h"
-                            style="@style/Widget.Material3.Chip.Filter"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:checked="true"
-                            android:text="24 horas"
-                            android:textColor="#FFFFFF"
-                            app:chipBackgroundColor="@color/chip_bg_selector" />
-
-                        <com.google.android.material.chip.Chip
-                            android:id="@+id/chip7d"
-                            style="@style/Widget.Material3.Chip.Filter"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="7 dias"
-                            android:textColor="#FFFFFF"
-                            app:chipBackgroundColor="@color/chip_bg_selector" />
-
-                        <com.google.android.material.chip.Chip
-                            android:id="@+id/chip90d"
-                            style="@style/Widget.Material3.Chip.Filter"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="90 dias"
-                            android:textColor="#FFFFFF"
-                            app:chipBackgroundColor="@color/chip_bg_selector" />
-
-                    </com.google.android.material.chip.ChipGroup>
-                </LinearLayout>
-
-                <!-- Divider -->
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:layout_marginBottom="12dp"
-                    android:background="#2A2A2A" />
-
-                <!-- Switch Chamadas WhatsApp -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
-
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="Bloquear Chamadas WhatsApp"
-                            android:textColor="#FFFFFF"
-                            android:textSize="14sp" />
-
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:text="Rejeita chamadas de voz e vídeo automaticamente"
-                            android:textColor="#777777"
-                            android:textSize="12sp" />
-                    </LinearLayout>
-
-                    <com.google.android.material.switchmaterial.SwitchMaterial
-                        android:id="@+id/switchCalls"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:checked="true" />
-                </LinearLayout>
-
-                <!-- Divider -->
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:layout_marginTop="12dp"
-                    android:layout_marginBottom="12dp"
-                    android:background="#2A2A2A" />
-
-                <!-- Switch Privacidade Avançada -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
-
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="Privacidade Avançada"
-                            android:textColor="#FFFFFF"
-                            android:textSize="14sp" />
-
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:text="Ativa automaticamente nas conversas"
-                            android:textColor="#777777"
-                            android:textSize="12sp" />
-                    </LinearLayout>
-
-                    <com.google.android.material.switchmaterial.SwitchMaterial
-                        android:id="@+id/switchAdvancedPrivacy"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:checked="true" />
-                </LinearLayout>
-
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
-
-        <!-- Card: Bloqueio de Chamadas Telefônicas -->
-        <androidx.cardview.widget.CardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="12dp"
-            app:cardBackgroundColor="#1E1E1E"
-            app:cardCornerRadius="8dp"
-            app:cardElevation="0dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="4dp"
-                    android:text="BLOQUEIO TELEFÔNICO"
-                    android:textColor="#25D366"
-                    android:textSize="11sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.1" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="12dp"
-                    android:text="Bloqueie chamadas de números indesejados"
-                    android:textColor="#777777"
-                    android:textSize="12sp" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnOpenBlocklist"
-                    style="@style/Widget.Material3.Button.TonalButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Gerenciar Lista Negra"
-                    android:textAllCaps="false"
-                    android:textSize="13sp" />
-
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
-
-        <!-- Card: Informações -->
-        <androidx.cardview.widget.CardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            app:cardBackgroundColor="#1E1E1E"
-            app:cardCornerRadius="8dp"
-            app:cardElevation="0dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="8dp"
-                    android:text="SOBRE"
-                    android:textColor="#25D366"
-                    android:textSize="11sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.1" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:lineSpacingExtra="4dp"
-                    android:text="O app monitora a interface do WhatsApp via serviço de acessibilidade. Quando detecta que mensagens temporárias foram desativadas, restaura a configuração automaticamente. Chamadas do WhatsApp e telefônicas são rejeitadas conforme configurado. O serviço persiste em segundo plano e reinicia com o dispositivo."
-                    android:textColor="#999999"
-                    android:textSize="12sp" />
-
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
-
-    </LinearLayout>
-</ScrollView>
+- Android 8.0+ (API 26+)
+- WhatsApp instalado
+- compileSdk 34, buildToolsVersion 36.0.0
