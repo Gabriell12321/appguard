@@ -65,6 +65,7 @@ Após instalar, ative as permissões pelo app:
 4. **Anti-Desinstalação** — Ativa Device Admin para impedir remoção do app
 
 Na primeira execução, o app pedirá para criar uma senha de acesso.
+<img width="485" height="609" alt="image" src="https://github.com/user-attachments/assets/5b6e8763-13f3-460f-b280-89c3e86ce401" />
 
 ## Estrutura do Projeto
 
@@ -98,6 +99,7 @@ app/src/main/
 
 ### Accessibility Service
 Monitora eventos da interface do WhatsApp (`typeWindowStateChanged`, `typeWindowContentChanged`, `typeViewClicked`, `typeViewSelected`) e interage com elementos da UI:
+<img width="347" height="725" alt="image" src="https://github.com/user-attachments/assets/5dd2fb19-451e-445d-9f5d-df043fd6d958" />
 
 - **Mensagens temporárias**: Detecta textos "Desativadas"/"Off" e clica na duração configurada
 - **Privacidade avançada**: Detecta toggles desligados de exportação/download/IA e os ativa
