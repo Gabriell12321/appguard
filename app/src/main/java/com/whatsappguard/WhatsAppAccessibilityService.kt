@@ -70,7 +70,7 @@ class WhatsAppAccessibilityService : AccessibilityService() {
             "Privacidade avançada", "Advanced privacy",
             "Privacidade avancada"
         )
-        // Togles de privacidade avançada que devem ficar LIGADOS
+        // Toggles de privacidade avançada que devem ficar LIGADOS
         private val ADVANCED_PRIVACY_TOGGLE_TEXTS = listOf(
             // Restringir exportação
             "Restringir exportação de conversa", "Restrict exporting chat",
@@ -81,6 +81,13 @@ class WhatsAppAccessibilityService : AccessibilityService() {
             // Bloquear uso de IA
             "Bloquear mensagens de IA", "Block AI messages",
             "Bloquear IA", "Block AI"
+        )
+        // Toggles que NÃO devem ser tocados (trancar/ocultar conversa)
+        private val ADVANCED_PRIVACY_EXCLUDE_TEXTS = listOf(
+            "Trancar", "Lock", "Ocultar", "Hide",
+            "Trancar e ocultar", "Lock and hide",
+            "Trancar conversa", "Lock chat",
+            "Ocultar conversa", "Hide chat"
         )
 
         var isServiceRunning = false
@@ -358,21 +365,42 @@ class WhatsAppAccessibilityService : AccessibilityService() {
     }
 
     private fun isRelatedToAdvancedPrivacy(switchNode: AccessibilityNodeInfo, rootNode: AccessibilityNodeInfo): Boolean {
-        // Verificar se o switch tem contentDescription relacionada
+        // Primeiro: verificar se é um toggle EXCLUÍDO (trancar/ocultar)
         val desc = switchNode.contentDescription?.toString() ?: ""
-        if (ADVANCED_PRIVACY_TOGGLE_TEXTS.any { desc.contains(it, ignoreCase = true) }) return true
-
-        // Verificar texto do próprio switch
         val txt = switchNode.text?.toString() ?: ""
+
+        if (ADVANCED_PRIVACY_EXCLUDE_TEXTS.any { desc.contains(it, ignoreCase = true) }) {
+            Log.i(TAG, "Toggle excluído (desc): $desc")
+            return false
+        }
+        if (ADVANCED_PRIVACY_EXCLUDE_TEXTS.any { txt.contains(it, ignoreCase = true) }) {
+            Log.i(TAG, "Toggle excluído (txt): $txt")
+            return false
+        }
+
+        // Verificar se o pai/container tem texto de exclusão
+        if (hasExcludedTextInParent(switchNode)) {
+            return false
+        }
+
+        // Verificar se o switch tem contentDescription relacionada ao que queremos
+        if (ADVANCED_PRIVACY_TOGGLE_TEXTS.any { desc.contains(it, ignoreCase = true) }) return true
         if (ADVANCED_PRIVACY_TOGGLE_TEXTS.any { txt.contains(it, ignoreCase = true) }) return true
 
-        // Verificar se o pai/container tem texto relacionado
+        // Verificar se o pai/container tem texto relacionado ao que queremos
         var parent = switchNode.parent
         var depth = 0
         while (parent != null && depth < 3) {
             for (i in 0 until parent.childCount) {
                 val sibling = parent.getChild(i) ?: continue
                 val siblingText = sibling.text?.toString() ?: ""
+                // Se o irmão tem texto excluído, não ativar esse switch
+                if (ADVANCED_PRIVACY_EXCLUDE_TEXTS.any { siblingText.contains(it, ignoreCase = true) }) {
+                    Log.i(TAG, "Toggle excluído (sibling): $siblingText")
+                    sibling.recycle()
+                    parent.recycle()
+                    return false
+                }
                 if (ADVANCED_PRIVACY_TOGGLE_TEXTS.any { siblingText.contains(it, ignoreCase = true) }) {
                     sibling.recycle()
                     parent.recycle()
@@ -386,8 +414,32 @@ class WhatsAppAccessibilityService : AccessibilityService() {
             depth++
         }
 
-        // Se estamos na tela de privacidade avançada, qualquer switch desligado provavelmente é relevante
-        return true
+        // Não conseguiu confirmar — NÃO clicar por segurança
+        Log.i(TAG, "Toggle não identificado, ignorando por segurança")
+        return false
+    }
+
+    private fun hasExcludedTextInParent(node: AccessibilityNodeInfo): Boolean {
+        var parent = node.parent
+        var depth = 0
+        while (parent != null && depth < 3) {
+            for (i in 0 until parent.childCount) {
+                val child = parent.getChild(i) ?: continue
+                val childText = child.text?.toString() ?: ""
+                val childDesc = child.contentDescription?.toString() ?: ""
+                if (ADVANCED_PRIVACY_EXCLUDE_TEXTS.any { childText.contains(it, ignoreCase = true) || childDesc.contains(it, ignoreCase = true) }) {
+                    child.recycle()
+                    parent.recycle()
+                    return true
+                }
+                child.recycle()
+            }
+            val grandParent = parent.parent
+            parent.recycle()
+            parent = grandParent
+            depth++
+        }
+        return false
     }
 
     private fun findSwitchInContainer(container: AccessibilityNodeInfo): AccessibilityNodeInfo? {
